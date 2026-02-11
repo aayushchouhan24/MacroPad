@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-surface text-slate-200 font-sans antialiased select-none;
+  }
+  ::-webkit-scrollbar {
+    @apply w-1;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full hover:bg-white/20;
+  }
+}
+
+/* ── Reusable Components ──────────────────────────────────────────────────── */
+@layer components {
+  /* Material-style glass card */
+  .card {
+    @apply bg-card rounded-2xl border border-border backdrop-blur-xl;
+  }
+  .card-sm {
+    @apply bg-card rounded-xl border border-border backdrop-blur-lg;
+  }
+  .card-interactive {
+    @apply card transition-all duration-200 hover:border-border-hover hover:bg-card-hover;
+  }
+
+  /* Legacy aliases */
+  .glass {
+    @apply card;
+  }
+  .glass-sm {
+    @apply card-sm;
+  }
+
+  /* Key caps */
+  .key-cap {
+    @apply w-[68px] h-[68px] rounded-xl bg-[#0e121b] border border-border
+           flex items-center justify-center text-xs font-semibold
+           transition-all duration-100 cursor-pointer select-none
+           hover:border-brand-500/40 hover:bg-[#141a28];
+  }
+  .key-cap.active {
+    @apply bg-brand-600/30 border-brand-500/60 text-brand-300
+           shadow-lg shadow-brand-600/20 scale-[0.93];
+  }
+  .key-cap.selected {
+    @apply ring-2 ring-brand-400/60 ring-offset-1 ring-offset-surface;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500
+           text-white text-sm font-medium transition-all duration-200
+           shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30;
+  }
+  .btn-secondary {
+    @apply px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10
+           border border-border hover:border-border-hover
+           text-slate-300 text-sm font-medium transition-all duration-200;
+  }
+  .btn-danger {
+    @apply px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-500/30
+           border border-red-500/30 hover:border-red-500/50
+           text-red-400 text-sm font-medium transition-all duration-200;
+  }
+
+  /* Inputs */
+  .input-field {
+    @apply w-full px-3 py-2 rounded-lg bg-white/5 border border-border
+           text-slate-200 text-sm placeholder:text-slate-600
+           focus:outline-none focus:border-brand-500/60 focus:ring-1 focus:ring-brand-500/20
+           transition-all duration-200;
+  }
+  select.input-field {
+    @apply appearance-none pr-8;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  select.input-field option {
+    background-color: #0e121b;
+    color: #e2e8f0;
+  }
+  .label {
+    @apply block text-xs font-medium text-slate-500 mb-1.5;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold;
+  }
+  .badge-green {
+    @apply badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/20;
+  }
+  .badge-amber {
+    @apply badge bg-amber-500/15 text-amber-400 border border-amber-500/20;
+  }
+  .badge-red {
+    @apply badge bg-red-500/15 text-red-400 border border-red-500/20;
+  }
+  .badge-slate {
+    @apply badge bg-white/5 text-slate-400 border border-border;
+  }
+}

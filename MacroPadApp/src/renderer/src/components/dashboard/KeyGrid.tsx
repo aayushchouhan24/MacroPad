@@ -1,0 +1,54 @@
+// =============================================================================
+// KeyGrid — 2×5 animated key grid
+// =============================================================================
+import { motion } from 'framer-motion'
+import { useAppStore } from '@/store/useAppStore'
+import { HID_KEY_LABELS, MAP_NONE, MAP_TEXT_MACRO, MAP_LAUNCH_APP } from '@/lib/types'
+import { NUM_ROWS, NUM_COLS } from '@/lib/constants'
+
+export function KeyGrid(): JSX.Element {
+  const pressedKeys  = useAppStore((s) => s.pressedKeys)
+  const keyMappings  = useAppStore((s) => s.keyMappings)
+
+  function keyLabel(idx: number): string {
+    const m = keyMappings[idx]
+    if (!m || m.type === MAP_NONE) return `${idx + 1}`
+    if (m.type === MAP_TEXT_MACRO) return m.macro?.slice(0, 6) || 'Macro'
+    if (m.type === MAP_LAUNCH_APP) {
+      if (!m.macro) return 'App'
+      const name = m.macro.replace(/\\/g, '/').split('/').pop() || m.macro
+      return name.replace(/\.[a-z]+$/i, '').slice(0, 8)
+    }
+    return HID_KEY_LABELS[m.keyCode] ?? `0x${m.keyCode.toString(16)}`
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {Array.from({ length: NUM_ROWS }, (_, r) => (
+        <div key={r} className="flex gap-2.5">
+          {Array.from({ length: NUM_COLS }, (_, c) => {
+            const idx = r * NUM_COLS + c
+            const pressed = pressedKeys[idx]
+            return (
+              <motion.div
+                key={idx}
+                animate={{
+                  scale: pressed ? 0.9 : 1,
+                  backgroundColor: pressed
+                    ? 'rgba(99, 102, 241, 0.35)'  // brand-600/35
+                    : 'rgb(14, 18, 27)'            // #0e121b
+                }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className={`key-cap ${pressed ? 'active' : ''}`}
+              >
+                <span className="text-[11px] leading-tight text-center">
+                  {keyLabel(idx)}
+                </span>
+              </motion.div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
