@@ -36,5 +36,8 @@ interface Window {
     browseForFile: () => Promise<string | null>
     getSettings: () => Promise<Record<string, unknown>>
     saveSettings: (s: Record<string, unknown>) => Promise<void>
+    // Serial port hot-plug
+    onSerialPortAdded: (cb: () => void) => () => void
+    onSerialPortRemoved: (cb: () => void) => () => void
   }
 }

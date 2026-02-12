@@ -7,7 +7,6 @@ import { TopBar } from '@/components/layout/TopBar'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { Dashboard } from '@/components/dashboard/Dashboard'
 import { KeyMapper } from '@/components/keymapper/KeyMapper'
-import { EncoderSettings } from '@/components/encoder/EncoderSettings'
 import { ProfileManager } from '@/components/profiles/ProfileManager'
 import { DeviceSettings } from '@/components/settings/DeviceSettings'
 import { ScanModal } from '@/components/ScanModal'
@@ -33,7 +32,6 @@ import {
 const pages: Record<string, () => JSX.Element> = {
   dashboard: Dashboard,
   keymapper: KeyMapper,
-  encoder: EncoderSettings,
   profiles: ProfileManager,
   settings: DeviceSettings
 }
@@ -48,6 +46,12 @@ export default function App(): JSX.Element {
       const s = useAppStore.getState()
       const pressed = type === EVT_KEY_PRESS
       s.setKeyPressed(idx, pressed)
+      
+      // Key 4 (5th key) is physically the encoder button
+      if (idx === 4) {
+        s.setEncoderBtnPressed(pressed)
+      }
+      
       const km = s.keyMappings[idx]
       const label = HID_KEY_LABELS[km?.keyCode] ?? `Key ${idx}`
       s.addEvent('key', `${label} ${pressed ? 'pressed' : 'released'}`)
@@ -125,7 +129,7 @@ export default function App(): JSX.Element {
     })
 
     // ── Unified connection change ────────────────────────────────────────
-    conn.onConnectionChange((connected) => {
+    conn.onConnectionChange(async (connected) => {
       const s = useAppStore.getState()
       if (!connected) {
         if (!conn.isReconnecting()) {
@@ -135,10 +139,19 @@ export default function App(): JSX.Element {
         s.clearAllKeys()
         s.addEvent('system', 'Device disconnected')
       } else {
+        const transport = conn.getActiveTransport()
         s.setDeviceName(conn.getDeviceName())
         s.setConnectionStatus('connected')
-        s.addNotification({ type: 'success', title: 'Device Connected', auto: true })
-        s.addEvent('system', 'Device connected')
+        s.addNotification({
+          type: 'success',
+          title: `Connected via ${transport === 'usb' ? 'USB' : 'Bluetooth'}`,
+          auto: true
+        })
+        s.addEvent('system', `Device connected (${transport ?? 'unknown'})`)
+
+        // Fetch device info + config from effective transport
+        const info = await conn.readDeviceInfo()
+        if (info) s.setDeviceInfo(info)
         conn.sendCommand(CMD_REQUEST_CONFIG).catch(() => {})
         conn.readBattery().then((b) => s.setBatteryLevel(b)).catch(() => {})
       }
@@ -151,6 +164,9 @@ export default function App(): JSX.Element {
         s.addEvent('system', 'Attempting to reconnect...')
       }
     })
+
+    // ── Start USB auto-connect polling ─────────────────────────────────────
+    conn.startUsbAutoConnect()
 
     // IPC listeners
     const cleanupDevices = window.api?.onDevicesDiscovered((devices: DiscoveredDevice[]) => {
@@ -169,9 +185,17 @@ export default function App(): JSX.Element {
       }
     })
 
+    // ── Serial port hot-plug: try USB auto-connect immediately ─────────────
+    const cleanupPortAdded = window.api?.onSerialPortAdded?.(() => {
+      console.log('[App] ESP serial port detected — attempting auto-connect')
+      conn.tryAutoConnectUsb().catch(() => {})
+    })
+
     return () => {
+      conn.stopUsbAutoConnect()
       cleanupDevices?.()
       cleanupAutoConnect?.()
+      cleanupPortAdded?.()
     }
   }, [])
 

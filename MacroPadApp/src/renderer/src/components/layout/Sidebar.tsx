@@ -5,7 +5,6 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
   Keyboard,
-  Disc3,
   Layers,
   Settings
 } from 'lucide-react'
@@ -15,7 +14,6 @@ import type { Page } from '@/lib/types'
 const NAV_ITEMS: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Dashboard',  icon: LayoutDashboard },
   { id: 'keymapper', label: 'Key Mapper', icon: Keyboard },
-  { id: 'encoder',   label: 'Encoder',    icon: Disc3 },
   { id: 'profiles',  label: 'Profiles',   icon: Layers },
   { id: 'settings',  label: 'Settings',   icon: Settings }
 ]

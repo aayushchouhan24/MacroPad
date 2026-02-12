@@ -61,7 +61,19 @@ const api = {
   // ── Settings ─────────────────────────────────────────────────────────────
   getSettings: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('settings:get'),
   saveSettings: (s: Record<string, unknown>): Promise<void> =>
-    ipcRenderer.invoke('settings:save', s)
+    ipcRenderer.invoke('settings:save', s),
+
+  // ── Serial port hot-plug events ─────────────────────────────────────────
+  onSerialPortAdded: (cb: () => void): (() => void) => {
+    const handler = (): void => cb()
+    ipcRenderer.on('serial:port-added', handler)
+    return () => ipcRenderer.removeListener('serial:port-added', handler)
+  },
+  onSerialPortRemoved: (cb: () => void): (() => void) => {
+    const handler = (): void => cb()
+    ipcRenderer.on('serial:port-removed', handler)
+    return () => ipcRenderer.removeListener('serial:port-removed', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

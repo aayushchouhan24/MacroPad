@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import * as conn from '@/lib/connection'
-import { CMD_REQUEST_CONFIG } from '@/lib/types'
 import { useState, useEffect } from 'react'
 
 export function TopBar(): JSX.Element {
@@ -35,12 +34,9 @@ export function TopBar(): JSX.Element {
   const pageLabels: Record<string, string> = {
     dashboard: 'Dashboard',
     keymapper: 'Key Mapper',
-    encoder: 'Encoder Settings',
     profiles: 'Profiles',
     settings: 'Device Settings'
   }
-
-  const busy = status === 'scanning' || status === 'connecting'
 
   async function handleBleConnect(): Promise<void> {
     const s = useAppStore.getState()
@@ -49,21 +45,15 @@ export function TopBar(): JSX.Element {
     try {
       const info = await conn.connectBle()
       if (!info) {
-        s.setConnectionStatus('disconnected')
+        if (!conn.isConnected()) s.setConnectionStatus('disconnected')
         s.setScanModalOpen(false)
         return
       }
       s.setScanModalOpen(false)
-      s.setDeviceName(conn.getDeviceName())
-      s.setDeviceInfo(info)
-      s.setConnectionStatus('connected')
-      await conn.sendCommand(CMD_REQUEST_CONFIG)
-      const batt = await conn.readBattery()
-      s.setBatteryLevel(batt)
     } catch (err) {
       console.error('BLE connection failed:', err)
       s.setScanModalOpen(false)
-      s.setConnectionStatus('disconnected')
+      if (!conn.isConnected()) s.setConnectionStatus('disconnected')
       s.addNotification({ type: 'error', title: 'BLE Connection Failed', message: String(err), auto: true })
     }
   }
@@ -72,20 +62,10 @@ export function TopBar(): JSX.Element {
     const s = useAppStore.getState()
     s.setConnectionStatus('connecting')
     try {
-      const info = await conn.connectUsb()
-      if (!info) {
-        s.setConnectionStatus('disconnected')
-        return
-      }
-      s.setDeviceName(conn.getDeviceName())
-      s.setDeviceInfo(info)
-      s.setConnectionStatus('connected')
-      await conn.sendCommand(CMD_REQUEST_CONFIG)
-      const batt = await conn.readBattery()
-      s.setBatteryLevel(batt)
+      await conn.connectUsb()
     } catch (err) {
       console.error('USB connection failed:', err)
-      s.setConnectionStatus('disconnected')
+      if (!conn.isConnected()) s.setConnectionStatus('disconnected')
       s.addNotification({ type: 'error', title: 'USB Connection Failed', message: String(err), auto: true })
     }
   }
@@ -99,17 +79,17 @@ export function TopBar(): JSX.Element {
   const batteryColor =
     battery > 50 ? 'text-emerald-400' : battery > 15 ? 'text-amber-400' : 'text-red-400'
 
-  const transport = conn.getActiveTransport()
+  const busy = status === 'scanning' || status === 'connecting'
 
   return (
-    <header className="h-14 flex items-center justify-between px-5
+    <header className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-5
                         border-b border-border bg-[#080b12]/80 backdrop-blur-sm shrink-0">
       {/* Left: page title + clock */}
-      <div className="flex items-center gap-4">
-        <h1 className="text-base font-semibold text-slate-200">
+      <div className="flex items-center gap-2 sm:gap-4">
+        <h1 className="text-sm sm:text-base font-semibold text-slate-200">
           {pageLabels[page] ?? ''}
         </h1>
-        <div className="flex items-center gap-1.5 text-slate-600">
+        <div className="hidden sm:flex items-center gap-1.5 text-slate-600">
           <Clock size={13} />
           <span className="text-xs font-mono tabular-nums">
             {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -118,19 +98,24 @@ export function TopBar(): JSX.Element {
       </div>
 
       {/* Right: status + controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         {/* Battery */}
         {status === 'connected' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-border">
+          <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-white/5 border border-border">
             <BatteryIcon size={14} className={batteryColor} />
             <span className={`text-xs font-medium tabular-nums ${batteryColor}`}>{battery}%</span>
           </div>
         )}
 
-        {/* Device name + transport badge */}
+        {/* Device name + transport badges */}
         {status === 'connected' && deviceName && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-border">
-            {transport === 'usb' ? <Usb size={12} className="text-cyan-400" /> : <Bluetooth size={12} className="text-blue-400" />}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-border">
+            {conn.isUsbConnected() && (
+              <Usb size={12} className="text-cyan-400" />
+            )}
+            {conn.isBleConnected() && (
+              <Bluetooth size={12} className="text-blue-400" />
+            )}
             <span className="text-xs text-slate-400">{deviceName}</span>
           </div>
         )}

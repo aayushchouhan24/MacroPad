@@ -10,6 +10,9 @@ export function KeyGrid(): JSX.Element {
   const pressedKeys  = useAppStore((s) => s.pressedKeys)
   const keyMappings  = useAppStore((s) => s.keyMappings)
 
+  // Key 4 (5th key, 0-indexed) is the encoder button - don't show it in the grid
+  const ENCODER_BTN_INDEX = 4
+
   function keyLabel(idx: number): string {
     const m = keyMappings[idx]
     if (!m || m.type === MAP_NONE) return `${idx + 1}`
@@ -37,11 +40,13 @@ export function KeyGrid(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-2 sm:gap-2.5">
       {Array.from({ length: NUM_ROWS }, (_, r) => (
-        <div key={r} className="flex gap-2.5">
+        <div key={r} className="flex gap-2 sm:gap-2.5">
           {Array.from({ length: NUM_COLS }, (_, c) => {
             const idx = r * NUM_COLS + c
+            // Skip encoder button (key 4)
+            if (idx === ENCODER_BTN_INDEX) return null
             const pressed = pressedKeys[idx]
             return (
               <motion.div

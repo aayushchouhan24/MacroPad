@@ -303,6 +303,8 @@ void restoreAfterWake() {
 
 void checkSleep() {
     if (cfg.sleepTimeoutMs == 0 || sleeping) return;
+    // Never sleep while USB serial is active — device is powered via USB
+    if (serialBridge.isHandshaked()) { resetActivity(); return; }
     if ((millis() - lastActivity) >= cfg.sleepTimeoutMs) {
         Serial.println("Entering light sleep…");
         Serial.flush();
@@ -320,6 +322,11 @@ void checkSleep() {
         // ── Woke up — execution resumes here ───────────────────────
         Serial.println("Woke up!");
         restoreAfterWake();
+
+        // Re-init serial bridge so a USB reconnect can re-handshake
+        serialBridge.begin(Serial);
+        serialBridge.setCommandCallback(onCommand);
+        serialBridge.setConfigCallback(onConfigWrite);
 
         // Swallow the wake-triggering key press so it doesn't fire as a real event
         delay(50);
