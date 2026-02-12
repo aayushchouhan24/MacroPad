@@ -3,7 +3,7 @@
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import {
   Plus,
   Copy,
@@ -119,7 +119,7 @@ export function ProfileManager(): JSX.Element {
       ec.btnKeyCode, ec.btnModifiers, ec.btnMapType
     )
 
-    await ble.sendCommand(CMD_SYNC_PROFILE, data)
+    await conn.sendCommand(CMD_SYNC_PROFILE, data)
     addNotification({ type: 'success', title: 'Profile synced to device', auto: true })
   }
 

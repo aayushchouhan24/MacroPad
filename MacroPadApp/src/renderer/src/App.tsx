@@ -13,7 +13,7 @@ import { DeviceSettings } from '@/components/settings/DeviceSettings'
 import { ScanModal } from '@/components/ScanModal'
 import { NotificationToast } from '@/components/layout/NotificationToast'
 import { useAppStore } from '@/store/useAppStore'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import {
   EVT_KEY_PRESS,
   EVT_KEY_RELEASE,
@@ -26,7 +26,8 @@ import {
   CFG_ENCODER_CONFIG,
   CFG_DEVICE_SETTINGS,
   defaultKeyMapping,
-  DiscoveredDevice
+  DiscoveredDevice,
+  CMD_REQUEST_CONFIG
 } from '@/lib/types'
 
 const pages: Record<string, () => JSX.Element> = {
@@ -41,9 +42,9 @@ export default function App(): JSX.Element {
   const page = useAppStore((s) => s.activePage)
   const Page = pages[page] ?? Dashboard
 
-  // ── Wire BLE events to store + OS key simulation ─────────────────────────
+  // ── Wire transport events to store + OS key simulation ───────────────────
   useEffect(() => {
-    ble.onKeyEvent((type, idx) => {
+    conn.onKeyEvent((type, idx) => {
       const s = useAppStore.getState()
       const pressed = type === EVT_KEY_PRESS
       s.setKeyPressed(idx, pressed)
@@ -51,7 +52,6 @@ export default function App(): JSX.Element {
       const label = HID_KEY_LABELS[km?.keyCode] ?? `Key ${idx}`
       s.addEvent('key', `${label} ${pressed ? 'pressed' : 'released'}`)
 
-      // ── Simulate the keystroke on the OS ───────────────────────────────
       if (km && km.type !== 0) {
         if (pressed) {
           window.api?.keyDown(km.type, km.keyCode, km.modifiers, km.macro)
@@ -61,13 +61,12 @@ export default function App(): JSX.Element {
       }
     })
 
-    ble.onEncoderEvent((type, dir, steps) => {
+    conn.onEncoderEvent((type, dir, steps) => {
       const s = useAppStore.getState()
       if (type === EVT_ENCODER_ROTATE) {
         const d = dir === DIR_CW ? 1 : -1
         s.setEncoderPosition(s.encoderPosition + d * steps)
         s.addEvent('encoder', `Rotated ${dir === DIR_CW ? 'CW' : 'CCW'} ×${steps}`)
-        // Simulate encoder rotation on OS
         const ec = s.encoderConfig
         window.api?.encoderRotate(ec.mode, dir, steps,
           ec.cwKeyCode, ec.ccwKeyCode, ec.cwModifiers, ec.ccwModifiers)
@@ -84,19 +83,16 @@ export default function App(): JSX.Element {
       }
     })
 
-    ble.onBatteryUpdate((level) => {
+    conn.onBatteryUpdate((level) => {
       useAppStore.getState().setBatteryLevel(level)
       if (level <= 15) {
         useAppStore.getState().addNotification({
-          type: 'warning',
-          title: 'Low Battery',
-          message: `Battery at ${level}%`,
-          auto: true
+          type: 'warning', title: 'Low Battery', message: `Battery at ${level}%`, auto: true
         })
       }
     })
 
-    ble.onConfigData((cfgType, data) => {
+    conn.onConfigData((cfgType, data) => {
       const s = useAppStore.getState()
       if (cfgType === CFG_KEY_MAPPING && data.length >= 5) {
         const idx = data[0]
@@ -128,17 +124,31 @@ export default function App(): JSX.Element {
       }
     })
 
-    ble.onConnectionChange((connected) => {
+    // ── Unified connection change ────────────────────────────────────────
+    conn.onConnectionChange((connected) => {
       const s = useAppStore.getState()
-      s.setConnectionStatus(connected ? 'connected' : 'disconnected')
       if (!connected) {
+        if (!conn.isReconnecting()) {
+          s.setConnectionStatus('disconnected')
+          s.addNotification({ type: 'error', title: 'Device Disconnected', auto: true })
+        }
         s.clearAllKeys()
-        s.addNotification({ type: 'error', title: 'Device Disconnected', auto: true })
         s.addEvent('system', 'Device disconnected')
       } else {
-        s.setDeviceName(ble.getDeviceName())
+        s.setDeviceName(conn.getDeviceName())
+        s.setConnectionStatus('connected')
         s.addNotification({ type: 'success', title: 'Device Connected', auto: true })
         s.addEvent('system', 'Device connected')
+        conn.sendCommand(CMD_REQUEST_CONFIG).catch(() => {})
+        conn.readBattery().then((b) => s.setBatteryLevel(b)).catch(() => {})
+      }
+    })
+
+    conn.onReconnecting((active) => {
+      const s = useAppStore.getState()
+      if (active) {
+        s.setConnectionStatus('reconnecting')
+        s.addEvent('system', 'Attempting to reconnect...')
       }
     })
 
@@ -147,16 +157,13 @@ export default function App(): JSX.Element {
       useAppStore.getState().setDiscoveredDevices(devices)
     })
 
-    // Auto-connect from main process
     const cleanupAutoConnect = window.api?.onAutoConnect(async () => {
       const s = useAppStore.getState()
       if (s.connectionStatus !== 'disconnected') return
       s.setConnectionStatus('scanning')
       try {
-        const dev = await ble.requestDevice()
-        if (!dev) { s.setConnectionStatus('disconnected'); return }
-        s.setConnectionStatus('connecting')
-        await ble.connect()
+        const info = await conn.connectBle()
+        if (!info) { s.setConnectionStatus('disconnected'); return }
       } catch {
         s.setConnectionStatus('disconnected')
       }

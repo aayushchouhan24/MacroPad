@@ -3,7 +3,7 @@
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import {
   CMD_SET_BT_NAME,
   CMD_SET_DEBOUNCE,
@@ -61,20 +61,20 @@ export function DeviceSettings(): JSX.Element {
     if (!connected) return
     const enc = new TextEncoder()
     const bytes = enc.encode(btName)
-    await ble.sendCommand(CMD_SET_BT_NAME, [...bytes])
+    await conn.sendCommand(CMD_SET_BT_NAME, [...bytes])
     addNotify({ type: 'info', title: 'Name updated (takes effect after restart)', auto: true })
   }
 
   async function handleSetDebounce(): Promise<void> {
     if (!connected) return
-    await ble.sendCommand(CMD_SET_DEBOUNCE, [(debounce >> 8) & 0xff, debounce & 0xff])
+    await conn.sendCommand(CMD_SET_DEBOUNCE, [(debounce >> 8) & 0xff, debounce & 0xff])
     addNotify({ type: 'success', title: `Debounce set to ${debounce}ms`, auto: true })
   }
 
   async function handleSetSleep(): Promise<void> {
     if (!connected) return
     const ms = sleepMin * 60 * 1000
-    await ble.sendCommand(CMD_SET_SLEEP_TIMEOUT, [
+    await conn.sendCommand(CMD_SET_SLEEP_TIMEOUT, [
       (ms >> 24) & 0xff, (ms >> 16) & 0xff, (ms >> 8) & 0xff, ms & 0xff
     ])
     addNotify({ type: 'success', title: `Sleep timeout set to ${sleepMin} min`, auto: true })
@@ -82,13 +82,13 @@ export function DeviceSettings(): JSX.Element {
 
   async function handleSaveToFlash(): Promise<void> {
     if (!connected) return
-    await ble.sendCommand(CMD_SAVE_CONFIG)
+    await conn.sendCommand(CMD_SAVE_CONFIG)
     addNotify({ type: 'success', title: 'Config saved to device flash', auto: true })
   }
 
   async function handleFactoryReset(): Promise<void> {
     if (!connected) return
-    await ble.sendCommand(CMD_FACTORY_RESET)
+    await conn.sendCommand(CMD_FACTORY_RESET)
     setResetConfirm(false)
     addNotify({ type: 'warning', title: 'Factory reset — device is restarting', auto: true })
   }

@@ -126,6 +126,32 @@ function createWindow(): void {
     bluetoothCallback = callback
   })
 
+  // ── Web Serial API — grant permission for ESP32 ports ─────────────────────
+  mainWindow.webContents.session.on('select-serial-port', (event, portList, _webContents, callback) => {
+    event.preventDefault()
+    // Auto-select the first matching ESP32-related port
+    const espPort = portList.find((p) =>
+      [0x303a, 0x10c4, 0x1a86, 0x0403].includes(typeof p.vendorId === 'number' ? p.vendorId : 0)
+    )
+    if (espPort) {
+      callback(espPort.portId)
+    } else if (portList.length > 0) {
+      callback(portList[0].portId)
+    } else {
+      callback('')
+    }
+  })
+
+  mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === 'serial') return true
+    return true
+  })
+
+  mainWindow.webContents.session.setDevicePermissionHandler((details) => {
+    if (details.deviceType === 'serial') return true
+    return true
+  })
+
   // Load renderer
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

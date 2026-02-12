@@ -55,10 +55,12 @@ void BleService::begin(const char* deviceName) {
 // ── Advertising ──────────────────────────────────────────────────────────────
 void BleService::startAdvertising() {
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    adv->reset();                        // clear stale data from previous cycles
     adv->addServiceUUID(SERVICE_UUID);
     adv->enableScanResponse(true);
     adv->setPreferredParams(0x06, 0x12);
     adv->start();
+    Serial.println("BLE: advertising started");
 }
 void BleService::stopAdvertising() { NimBLEDevice::getAdvertising()->stop(); }
 

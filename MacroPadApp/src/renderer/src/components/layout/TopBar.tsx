@@ -2,17 +2,20 @@
 // TopBar — Material dark status bar with connection + battery + controls
 // =============================================================================
 import {
+  Bluetooth,
   BluetoothSearching,
   BluetoothConnected,
   BluetoothOff,
   Battery,
   BatteryCharging,
   BatteryWarning,
+  Usb,
   Unplug,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import { CMD_REQUEST_CONFIG } from '@/lib/types'
 import { useState, useEffect } from 'react'
 
@@ -37,45 +40,66 @@ export function TopBar(): JSX.Element {
     settings: 'Device Settings'
   }
 
-  async function handleConnect(): Promise<void> {
-    useAppStore.getState().setConnectionStatus('scanning')
-    useAppStore.getState().setScanModalOpen(true)
-    const dev = await ble.requestDevice()
-    if (!dev) {
-      useAppStore.getState().setConnectionStatus('disconnected')
-      useAppStore.getState().setScanModalOpen(false)
-      return
-    }
-    useAppStore.getState().setConnectionStatus('connecting')
-    useAppStore.getState().setScanModalOpen(false)
+  const busy = status === 'scanning' || status === 'connecting'
+
+  async function handleBleConnect(): Promise<void> {
+    const s = useAppStore.getState()
+    s.setConnectionStatus('scanning')
+    s.setScanModalOpen(true)
     try {
-      const info = await ble.connect()
-      useAppStore.getState().setDeviceName(ble.getDeviceName())
-      useAppStore.getState().setDeviceInfo(info)
-      useAppStore.getState().setConnectionStatus('connected')
-      await ble.sendCommand(CMD_REQUEST_CONFIG)
-      const batt = await ble.readBattery()
-      useAppStore.getState().setBatteryLevel(batt)
+      const info = await conn.connectBle()
+      if (!info) {
+        s.setConnectionStatus('disconnected')
+        s.setScanModalOpen(false)
+        return
+      }
+      s.setScanModalOpen(false)
+      s.setDeviceName(conn.getDeviceName())
+      s.setDeviceInfo(info)
+      s.setConnectionStatus('connected')
+      await conn.sendCommand(CMD_REQUEST_CONFIG)
+      const batt = await conn.readBattery()
+      s.setBatteryLevel(batt)
     } catch (err) {
-      console.error('Connection failed:', err)
-      useAppStore.getState().setConnectionStatus('disconnected')
-      useAppStore.getState().addNotification({
-        type: 'error',
-        title: 'Connection Failed',
-        message: String(err),
-        auto: true
-      })
+      console.error('BLE connection failed:', err)
+      s.setScanModalOpen(false)
+      s.setConnectionStatus('disconnected')
+      s.addNotification({ type: 'error', title: 'BLE Connection Failed', message: String(err), auto: true })
+    }
+  }
+
+  async function handleUsbConnect(): Promise<void> {
+    const s = useAppStore.getState()
+    s.setConnectionStatus('connecting')
+    try {
+      const info = await conn.connectUsb()
+      if (!info) {
+        s.setConnectionStatus('disconnected')
+        return
+      }
+      s.setDeviceName(conn.getDeviceName())
+      s.setDeviceInfo(info)
+      s.setConnectionStatus('connected')
+      await conn.sendCommand(CMD_REQUEST_CONFIG)
+      const batt = await conn.readBattery()
+      s.setBatteryLevel(batt)
+    } catch (err) {
+      console.error('USB connection failed:', err)
+      s.setConnectionStatus('disconnected')
+      s.addNotification({ type: 'error', title: 'USB Connection Failed', message: String(err), auto: true })
     }
   }
 
   function handleDisconnect(): void {
-    ble.disconnect()
+    conn.disconnect()
   }
 
   const BatteryIcon =
     battery > 50 ? Battery : battery > 15 ? BatteryCharging : BatteryWarning
   const batteryColor =
     battery > 50 ? 'text-emerald-400' : battery > 15 ? 'text-amber-400' : 'text-red-400'
+
+  const transport = conn.getActiveTransport()
 
   return (
     <header className="h-14 flex items-center justify-between px-5
@@ -103,14 +127,15 @@ export function TopBar(): JSX.Element {
           </div>
         )}
 
-        {/* Device name */}
+        {/* Device name + transport badge */}
         {status === 'connected' && deviceName && (
-          <div className="px-2.5 py-1 rounded-lg bg-white/5 border border-border">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-border">
+            {transport === 'usb' ? <Usb size={12} className="text-cyan-400" /> : <Bluetooth size={12} className="text-blue-400" />}
             <span className="text-xs text-slate-400">{deviceName}</span>
           </div>
         )}
 
-        {/* Connect / Disconnect */}
+        {/* Connected → Disconnect button */}
         {status === 'connected' ? (
           <button
             onClick={handleDisconnect}
@@ -121,32 +146,50 @@ export function TopBar(): JSX.Element {
             <Unplug size={13} />
             Disconnect
           </button>
-        ) : (
+        ) : status === 'reconnecting' ? (
           <button
-            onClick={handleConnect}
-            disabled={status === 'scanning' || status === 'connecting'}
+            onClick={handleDisconnect}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                       bg-brand-600 hover:bg-brand-500 disabled:opacity-50
-                       text-white text-xs font-medium transition-all duration-200
-                       shadow-lg shadow-brand-600/20"
+                       bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30
+                       text-amber-300 text-xs font-medium transition-all duration-200"
           >
-            {status === 'scanning' ? (
-              <>
-                <BluetoothSearching size={13} className="animate-pulse" />
-                Scanning…
-              </>
-            ) : status === 'connecting' ? (
-              <>
-                <BluetoothConnected size={13} className="animate-pulse" />
-                Connecting…
-              </>
-            ) : (
-              <>
-                <BluetoothOff size={13} />
-                Connect
-              </>
-            )}
+            <RefreshCw size={13} className="animate-spin" />
+            Reconnecting…
           </button>
+        ) : (
+          /* Disconnected → BT + USB connect buttons side by side */
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBleConnect}
+              disabled={busy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                         bg-brand-600 hover:bg-brand-500 disabled:opacity-50
+                         text-white text-xs font-medium transition-all duration-200
+                         shadow-lg shadow-brand-600/20"
+            >
+              {status === 'scanning' ? (
+                <><BluetoothSearching size={13} className="animate-pulse" /> Scanning…</>
+              ) : status === 'connecting' ? (
+                <><BluetoothConnected size={13} className="animate-pulse" /> Connecting…</>
+              ) : (
+                <><BluetoothOff size={13} /> BT</>
+              )}
+            </button>
+
+            {conn.isSerialSupported() && (
+              <button
+                onClick={handleUsbConnect}
+                disabled={busy}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                           bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50
+                           text-white text-xs font-medium transition-all duration-200
+                           shadow-lg shadow-cyan-700/20"
+              >
+                <Usb size={13} />
+                USB
+              </button>
+            )}
+          </div>
         )}
       </div>
     </header>

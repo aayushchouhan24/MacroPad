@@ -20,6 +20,7 @@ export function Dashboard(): JSX.Element {
   const devName  = useAppStore((s) => s.deviceName)
 
   const connected = status === 'connected'
+  const reconnecting = status === 'reconnecting'
 
   return (
     <div className="grid grid-cols-12 gap-4 animate-fade-in">
@@ -28,8 +29,8 @@ export function Dashboard(): JSX.Element {
         <StatusCard
           icon={connected ? Bluetooth : BluetoothOff}
           label="Connection"
-          value={connected ? 'Connected' : 'Disconnected'}
-          accent={connected ? '#34d399' : '#475569'}
+          value={connected ? 'Connected' : reconnecting ? 'Reconnecting…' : 'Disconnected'}
+          accent={connected ? '#34d399' : reconnecting ? '#f59e0b' : '#475569'}
         />
         <StatusCard
           icon={Cpu}

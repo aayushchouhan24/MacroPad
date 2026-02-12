@@ -3,7 +3,7 @@
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import {
   MAP_NONE,
   MAP_SINGLE_KEY,
@@ -70,7 +70,7 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
     if (connected) {
       const enc = new TextEncoder()
       const macroBytes = local.macro ? enc.encode(local.macro) : new Uint8Array()
-      await ble.sendCommand(CMD_SET_KEY_MAP, [
+      await conn.sendCommand(CMD_SET_KEY_MAP, [
         keyIndex,
         local.type,
         local.keyCode,

@@ -14,6 +14,7 @@
 #include "Battery.h"
 #include "ConfigStore.h"
 #include "BleService.h"
+#include "SerialBridge.h"
 
 // ─── Global instances ────────────────────────────────────────────────────────
 KeyMatrix      keyMatrix;
@@ -21,6 +22,7 @@ RotaryEncoder  encoder;
 BatteryMonitor battery;
 ConfigStore    configStore;
 BleService     bleService;
+SerialBridge   serialBridge;
 DeviceConfig   cfg;
 
 unsigned long lastActivity = 0;
@@ -39,27 +41,32 @@ void handleProfileSync(const uint8_t* data, size_t len);
 // ─── Callbacks: key / encoder / battery ──────────────────────────────────────
 void onKey(uint8_t idx, bool pressed) {
     resetActivity();
-    bleService.sendKeyEvent(pressed ? EVT_KEY_PRESS : EVT_KEY_RELEASE, idx);
+    uint8_t evt = pressed ? EVT_KEY_PRESS : EVT_KEY_RELEASE;
+    bleService.sendKeyEvent(evt, idx);
+    serialBridge.sendKeyEvent(evt, idx);
     Serial.printf("Key %u %s\n", idx, pressed ? "DOWN" : "UP");
 }
 
 void onRotate(int8_t dir, uint8_t steps) {
     resetActivity();
-    bleService.sendEncoderEvent(EVT_ENCODER_ROTATE,
-                                dir > 0 ? DIR_CW : DIR_CCW, steps);
+    uint8_t d = dir > 0 ? DIR_CW : DIR_CCW;
+    bleService.sendEncoderEvent(EVT_ENCODER_ROTATE, d, steps);
+    serialBridge.sendEncoderEvent(EVT_ENCODER_ROTATE, d, steps);
     Serial.printf("Enc %s ×%u\n", dir > 0 ? "CW" : "CCW", steps);
 }
 
 void onEncButton(bool pressed) {
     resetActivity();
-    bleService.sendEncoderEvent(
-        pressed ? EVT_ENCODER_BTN_PRESS : EVT_ENCODER_BTN_RELEASE,
-        pressed ? 1 : 0, 0);
+    uint8_t evt = pressed ? EVT_ENCODER_BTN_PRESS : EVT_ENCODER_BTN_RELEASE;
+    uint8_t d   = pressed ? 1 : 0;
+    bleService.sendEncoderEvent(evt, d, 0);
+    serialBridge.sendEncoderEvent(evt, d, 0);
     Serial.printf("Enc btn %s\n", pressed ? "DOWN" : "UP");
 }
 
 void onBattery(uint8_t pct, uint16_t mv) {
     bleService.updateBatteryLevel(pct);
+    serialBridge.updateBatteryLevel(pct);
     Serial.printf("Batt %u%% (%u mV)\n", pct, mv);
 }
 
@@ -174,6 +181,7 @@ void sendCurrentConfig() {
     buf[p++] = nl;
     memcpy(buf + p, cfg.deviceName, nl);  p += nl;
     bleService.sendConfigData(buf, p);
+    serialBridge.sendConfigData(buf, p);
     delay(20);
 
     // Per-key mappings
@@ -191,6 +199,7 @@ void sendCurrentConfig() {
             kp += cfg.keyMappings[i].macroLength;
         }
         bleService.sendConfigData(kb, kp);
+        serialBridge.sendConfigData(kb, kp);
         delay(20);
     }
 
@@ -207,6 +216,7 @@ void sendCurrentConfig() {
     eb[ep++] = cfg.encoderConfig.btnModifiers;
     eb[ep++] = cfg.encoderConfig.btnMapType;
     bleService.sendConfigData(eb, ep);
+    serialBridge.sendConfigData(eb, ep);
 }
 
 // ─── Profile sync ────────────────────────────────────────────────────────────
@@ -262,6 +272,9 @@ void configureSleepWakeup() {
     gpio_wakeup_enable((gpio_num_t)ENC_A_PIN, GPIO_INTR_LOW_LEVEL);
     gpio_wakeup_enable((gpio_num_t)ENC_B_PIN, GPIO_INTR_LOW_LEVEL);
 
+    // Enable wake on encoder push-button
+    gpio_wakeup_enable((gpio_num_t)ENC_BTN_PIN, GPIO_INTR_LOW_LEVEL);
+
     // Tell ESP-IDF to use GPIO wakeup for light sleep
     esp_sleep_enable_gpio_wakeup();
 }
@@ -278,6 +291,7 @@ void restoreAfterWake() {
     }
     gpio_wakeup_disable((gpio_num_t)ENC_A_PIN);
     gpio_wakeup_disable((gpio_num_t)ENC_B_PIN);
+    gpio_wakeup_disable((gpio_num_t)ENC_BTN_PIN);
 
     // Re-attach encoder interrupts (detached by light sleep)
     encoder.begin();
@@ -306,6 +320,12 @@ void checkSleep() {
         // ── Woke up — execution resumes here ───────────────────────
         Serial.println("Woke up!");
         restoreAfterWake();
+
+        // Swallow the wake-triggering key press so it doesn't fire as a real event
+        delay(50);
+        keyMatrix.scan();   // reads & clears the pressed key state
+        encoder.update();   // reads & clears any encoder delta
+
         Serial.println("BLE advertising restarted, ready");
         resetActivity();
     }
@@ -341,6 +361,11 @@ void setup() {
     bleService.setConfigCallback(onConfigWrite);
     bleService.updateBatteryLevel(battery.getPercentage());
 
+    // USB Serial bridge — shares the same Serial port, uses framed packets
+    serialBridge.begin(Serial);
+    serialBridge.setCommandCallback(onCommand);
+    serialBridge.setConfigCallback(onConfigWrite);
+
     lastActivity = millis();
     Serial.println("══════ Ready ══════");
 }
@@ -349,6 +374,7 @@ void loop() {
     keyMatrix.scan();
     encoder.update();
     battery.update();
+    serialBridge.update();
     checkSleep();
     delay(1);
 }

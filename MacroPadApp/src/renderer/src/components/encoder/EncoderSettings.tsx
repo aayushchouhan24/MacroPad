@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { EncoderKnob } from '@/components/dashboard/EncoderKnob'
-import * as ble from '@/lib/bleApi'
+import * as conn from '@/lib/connection'
 import {
   ENC_MODE_LABELS,
   ENC_MODE_VOLUME,
@@ -52,7 +52,7 @@ export function EncoderSettings(): JSX.Element {
   async function handleApply(): Promise<void> {
     setConfig(local)
     if (connected) {
-      await ble.sendCommand(CMD_SET_ENCODER_MODE, [
+      await conn.sendCommand(CMD_SET_ENCODER_MODE, [
         local.mode,
         local.cwKeyCode,
         local.ccwKeyCode,

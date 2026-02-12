@@ -75,9 +75,11 @@ export function Sidebar(): JSX.Element {
           className={`w-2.5 h-2.5 rounded-full ${
             status === 'connected'
               ? 'bg-emerald-400 shadow-lg shadow-emerald-400/40'
-              : status === 'scanning' || status === 'connecting'
-                ? 'bg-amber-400 animate-pulse'
-                : 'bg-slate-700'
+              : status === 'reconnecting'
+                ? 'bg-amber-400 animate-pulse shadow-lg shadow-amber-400/30'
+                : status === 'scanning' || status === 'connecting'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-slate-700'
           }`}
         />
       </div>
