@@ -95,6 +95,27 @@ public class KS {
         i[0].u.mi.mouseData = amount;
         SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
     }
+
+    const uint MOUSEEVENTF_LEFTDOWN   = 0x0002;
+    const uint MOUSEEVENTF_LEFTUP     = 0x0004;
+    const uint MOUSEEVENTF_RIGHTDOWN  = 0x0008;
+    const uint MOUSEEVENTF_RIGHTUP    = 0x0010;
+    const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+    const uint MOUSEEVENTF_MIDDLEUP   = 0x0040;
+
+    public static void MouseDown(int btn) {
+        INPUT[] i = new INPUT[1];
+        i[0].type = INPUT_MOUSE;
+        i[0].u.mi.dwFlags = btn == 1 ? MOUSEEVENTF_RIGHTDOWN : btn == 2 ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_LEFTDOWN;
+        SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
+    }
+
+    public static void MouseUp(int btn) {
+        INPUT[] i = new INPUT[1];
+        i[0].type = INPUT_MOUSE;
+        i[0].u.mi.dwFlags = btn == 1 ? MOUSEEVENTF_RIGHTUP : btn == 2 ? MOUSEEVENTF_MIDDLEUP : MOUSEEVENTF_LEFTUP;
+        SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
+    }
 }
 "@
 Write-Host "RDY"
@@ -178,6 +199,14 @@ class KeySender {
     this.send(`[KS]::Scroll(${amount})`)
   }
 
+  mouseDown(btn: number): void {
+    this.send(`[KS]::MouseDown(${btn})`)
+  }
+
+  mouseUp(btn: number): void {
+    this.send(`[KS]::MouseUp(${btn})`)
+  }
+
   // ── High-level: HID key events → system keystrokes ────────────────────
 
   /** Simulate a mapped key press (key down) */
@@ -189,7 +218,17 @@ class KeySender {
         if (vk) this.vkDown(vk)
         break
       }
-      case MAP_MODIFIER_COMBO:
+      case MAP_MODIFIER_COMBO: {
+        if (macro && macro.startsWith('[')) {
+          this.playMacro(macro)
+        } else {
+          const mods = modBitsToVkList(modifiers)
+          for (const m of mods) this.vkDown(m)
+          const vk = HID_TO_VK[keyCode]
+          if (vk) this.vkDown(vk)
+        }
+        break
+      }
       case MAP_SHORTCUT: {
         const mods = modBitsToVkList(modifiers)
         for (const m of mods) this.vkDown(m)
@@ -226,6 +265,80 @@ class KeySender {
     } catch (err) {
       console.warn('[keySender] launchApp error:', err)
     }
+  }
+
+  /** Play a recorded macro sequence (JSON array of MacroAction) */
+  private playMacro(actionsJson: string): void {
+    try {
+      interface Action {
+        type: string; delayMs?: number; key?: string; vk?: number;
+        button?: string; path?: string; command?: string; text?: string; count?: number;
+        [k: string]: unknown;
+      }
+      const actions: Action[] = JSON.parse(actionsJson)
+      const expanded = this.expandLoops(actions)
+
+      for (const a of expanded) {
+        switch (a.type) {
+          case 'delay':
+            if (typeof a.delayMs === 'number' && a.delayMs > 0)
+              this.send(`Start-Sleep -Milliseconds ${a.delayMs}`)
+            break
+          case 'key-down':
+            if (typeof a.vk === 'number') this.vkDown(a.vk)
+            break
+          case 'key-up':
+            if (typeof a.vk === 'number') this.vkUp(a.vk)
+            break
+          case 'mouse-down':
+            this.mouseDown(a.button === 'right' ? 1 : a.button === 'middle' ? 2 : 0)
+            break
+          case 'mouse-up':
+            this.mouseUp(a.button === 'right' ? 1 : a.button === 'middle' ? 2 : 0)
+            break
+          case 'launch':
+            if (typeof a.path === 'string') this.launchApp(a.path)
+            break
+          case 'command':
+            if (typeof a.command === 'string') this.launchApp(a.command)
+            break
+          case 'text':
+            if (typeof a.text === 'string') this.typeString(a.text)
+            break
+        }
+      }
+    } catch (err) {
+      console.warn('[keySender] playMacro error:', err)
+    }
+  }
+
+  /** Expand loop-start / loop-end blocks into flat action list */
+  private expandLoops(
+    actions: Array<{ type: string; count?: number; [k: string]: unknown }>
+  ): Array<{ type: string; [k: string]: unknown }> {
+    const result: Array<{ type: string; [k: string]: unknown }> = []
+    let i = 0
+    while (i < actions.length) {
+      if (actions[i].type === 'loop-start') {
+        const count = Math.min((actions[i].count as number) || 1, 100)
+        const start = i + 1
+        let depth = 1, j = start
+        while (j < actions.length && depth > 0) {
+          if (actions[j].type === 'loop-start') depth++
+          if (actions[j].type === 'loop-end') depth--
+          j++
+        }
+        const body = actions.slice(start, j - 1)
+        for (let r = 0; r < count; r++) result.push(...this.expandLoops(body))
+        i = j
+      } else if (actions[i].type === 'loop-end') {
+        i++
+      } else {
+        result.push(actions[i])
+        i++
+      }
+    }
+    return result
   }
 
   /** Simulate a mapped key release (key up) */

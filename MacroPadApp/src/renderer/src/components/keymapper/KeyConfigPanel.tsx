@@ -10,7 +10,6 @@ import {
   MAP_MEDIA_KEY,
   MAP_MODIFIER_COMBO,
   MAP_TEXT_MACRO,
-  MAP_SHORTCUT,
   MAP_LAUNCH_APP,
   MAP_TYPE_LABELS,
   HID_KEY_LABELS,
@@ -18,6 +17,7 @@ import {
   type KeyMapping
 } from '@/lib/types'
 import { Send, RotateCcw, FolderOpen } from 'lucide-react'
+import { MacroEditor, parseMacroActions, stringifyMacroActions } from './MacroEditor'
 
 const MAP_TYPES = [
   MAP_NONE,
@@ -25,7 +25,6 @@ const MAP_TYPES = [
   MAP_MEDIA_KEY,
   MAP_MODIFIER_COMBO,
   MAP_TEXT_MACRO,
-  MAP_SHORTCUT,
   MAP_LAUNCH_APP
 ]
 
@@ -156,45 +155,13 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
         </div>
       )}
 
-      {(local.type === MAP_MODIFIER_COMBO || local.type === MAP_SHORTCUT) && (
-        <div className="space-y-3">
-          <div>
-            <label className="label">Modifiers</label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { flag: 0x01, label: 'Ctrl' },
-                { flag: 0x02, label: 'Shift' },
-                { flag: 0x04, label: 'Alt' },
-                { flag: 0x08, label: 'Win/Cmd' }
-              ].map(({ flag, label }) => (
-                <button
-                  key={flag}
-                  onClick={() =>
-                    update({ modifiers: local.modifiers ^ flag })
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors
-                    ${(local.modifiers & flag)
-                      ? 'bg-brand-600/30 border-brand-500/50 text-brand-300'
-                      : 'bg-slate-800/60 border-slate-700/40 text-slate-500 hover:border-slate-600'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="label">Key</label>
-            <select
-              value={local.keyCode}
-              onChange={(e) => update({ keyCode: Number(e.target.value) })}
-              className="input-field"
-            >
-              <option value={0}>Select a key…</option>
-              {COMMON_KEYS.map((k) => (
-                <option key={k.code} value={k.code}>{k.label}</option>
-              ))}
-            </select>
-          </div>
+      {local.type === MAP_MODIFIER_COMBO && (
+        <div>
+          <label className="label">Macro Sequence</label>
+          <MacroEditor
+            actions={parseMacroActions(local.macro)}
+            onChange={(acts) => update({ macro: stringifyMacroActions(acts), keyCode: 0, modifiers: 0 })}
+          />
         </div>
       )}
 
@@ -217,13 +184,13 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
 
       {local.type === MAP_LAUNCH_APP && (
         <div>
-          <label className="label">Application Path or Command</label>
+          <label className="label">Command</label>
           <div className="flex gap-2">
             <input
               type="text"
               value={local.macro}
               onChange={(e) => update({ macro: e.target.value })}
-              placeholder="e.g. notepad.exe or C:\\Apps\\MyApp.exe"
+              placeholder="e.g. notepad.exe, cmd /c dir, shutdown /s /t 0"
               className="input-field font-mono flex-1"
             />
             <button
@@ -238,7 +205,7 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
             </button>
           </div>
           <p className="text-[11px] text-slate-600 mt-2">
-            Enter a file path to launch an app, or a shell command to run.
+            Run any command, open an app, or execute a script.
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {[
@@ -246,7 +213,10 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
               { label: 'Calculator', cmd: 'calc.exe' },
               { label: 'Explorer', cmd: 'explorer.exe' },
               { label: 'Task Manager', cmd: 'taskmgr.exe' },
-              { label: 'Snipping Tool', cmd: 'snippingtool.exe' }
+              { label: 'CMD', cmd: 'cmd.exe' },
+              { label: 'PowerShell', cmd: 'powershell.exe' },
+              { label: 'Snip & Sketch', cmd: 'ms-screenclip:' },
+              { label: 'Settings', cmd: 'ms-settings:' }
             ].map((q) => (
               <button
                 key={q.cmd}

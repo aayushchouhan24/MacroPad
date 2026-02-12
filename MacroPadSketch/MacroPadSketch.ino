@@ -6,6 +6,8 @@
 // =============================================================================
 
 #include <Arduino.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
 #include "Config.h"
 #include "KeyMatrix.h"
 #include "Encoder.h"
@@ -245,15 +247,67 @@ void handleProfileSync(const uint8_t* d, size_t n) {
 }
 
 // ─── Sleep ───────────────────────────────────────────────────────────────────
+void configureSleepWakeup() {
+    // Drive all rows LOW so any key press pulls a column LOW
+    for (int r = 0; r < NUM_ROWS; r++) {
+        digitalWrite(ROW_PINS[r], LOW);
+    }
+
+    // Enable wake on any column pin going LOW (key press)
+    for (int c = 0; c < NUM_COLS; c++) {
+        gpio_wakeup_enable((gpio_num_t)COL_PINS[c], GPIO_INTR_LOW_LEVEL);
+    }
+
+    // Enable wake on encoder rotation (either signal going LOW)
+    gpio_wakeup_enable((gpio_num_t)ENC_A_PIN, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)ENC_B_PIN, GPIO_INTR_LOW_LEVEL);
+
+    // Tell ESP-IDF to use GPIO wakeup for light sleep
+    esp_sleep_enable_gpio_wakeup();
+}
+
+void restoreAfterWake() {
+    // Restore row pins to HIGH for normal matrix scanning
+    for (int r = 0; r < NUM_ROWS; r++) {
+        digitalWrite(ROW_PINS[r], HIGH);
+    }
+
+    // Disable GPIO wakeup on all pins (clean slate for next sleep)
+    for (int c = 0; c < NUM_COLS; c++) {
+        gpio_wakeup_disable((gpio_num_t)COL_PINS[c]);
+    }
+    gpio_wakeup_disable((gpio_num_t)ENC_A_PIN);
+    gpio_wakeup_disable((gpio_num_t)ENC_B_PIN);
+
+    // Re-attach encoder interrupts (detached by light sleep)
+    encoder.begin();
+    encoder.setSensitivity(cfg.encoderConfig.sensitivity);
+
+    // Restart BLE advertising so the app can reconnect
+    bleService.startAdvertising();
+}
+
 void checkSleep() {
     if (cfg.sleepTimeoutMs == 0 || sleeping) return;
     if ((millis() - lastActivity) >= cfg.sleepTimeoutMs) {
         Serial.println("Entering light sleep…");
+        Serial.flush();
         sleeping = true;
-        esp_sleep_enable_gpio_wakeup();
-        esp_light_sleep_start();            // blocks until wake
+
+        // Stop BLE advertising before sleep
+        bleService.stopAdvertising();
+
+        // Configure all GPIO wake sources
+        configureSleepWakeup();
+
+        // Enter light sleep — CPU halts here until a wake pin triggers
+        esp_light_sleep_start();
+
+        // ── Woke up — execution resumes here ───────────────────────
+        Serial.println("Woke up!");
+        restoreAfterWake();
+        Serial.println("BLE advertising restarted, ready");
         resetActivity();
-        Serial.println("Woke up");
     }
 }
 
