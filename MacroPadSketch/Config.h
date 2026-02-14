@@ -61,83 +61,18 @@ static const uint8_t COL_PINS[NUM_COLS] = {0, 1, 2, 3, 4};
 #define DIR_CCW                   0xFF
 
 // ─── Protocol — Commands (app → device) ──────────────────────────────────────
-#define CMD_FACTORY_RESET         0x01
-#define CMD_SET_BT_NAME           0x02
-#define CMD_SET_DEBOUNCE          0x03
-#define CMD_SET_ENC_SENSITIVITY   0x04
-#define CMD_SET_SLEEP_TIMEOUT     0x05
-#define CMD_SAVE_CONFIG           0x06
-#define CMD_REQUEST_CONFIG        0x07
-#define CMD_SET_KEY_MAP           0x08
-#define CMD_SET_ENCODER_MODE      0x09
-#define CMD_SYNC_PROFILE          0x0A
-
-// ─── Protocol — Config Packet Types (device → app) ──────────────────────────
-#define CFG_KEY_MAPPING           0x01
-#define CFG_ENCODER_CONFIG        0x02
-#define CFG_DEVICE_SETTINGS       0x03
-
-// ─── Key Mapping Types ───────────────────────────────────────────────────────
-#define MAP_NONE                  0x00
-#define MAP_SINGLE_KEY            0x01
-#define MAP_MEDIA_KEY             0x02
-#define MAP_MODIFIER_COMBO        0x03
-#define MAP_TEXT_MACRO            0x04
-#define MAP_SHORTCUT              0x05
-
-// ─── Encoder Modes ────────────────────────────────────────────────────────────
-#define ENC_MODE_VOLUME           0x01
-#define ENC_MODE_SCROLL           0x02
-#define ENC_MODE_ZOOM             0x03
-#define ENC_MODE_BRIGHTNESS       0x04
-#define ENC_MODE_CUSTOM           0x05
+// The ESP stores NOTHING.  It is a dumb I/O board.
+// All configuration lives on the PC.  Only two commands remain:
+#define CMD_IDENTIFY              0x07   // device replies with device-info
+#define CMD_SET_DEBOUNCE_LIVE     0x03   // RAM-only, lost on reboot
 
 // ─── Firmware Version ─────────────────────────────────────────────────────────
 #define FW_VERSION_MAJOR          1
 #define FW_VERSION_MINOR          0
 #define FW_VERSION_PATCH          0
 
-// ─── Modifier Bit-Flags (HID standard) ──────────────────────────────────────
-#define MOD_NONE                  0x00
-#define MOD_LEFT_CTRL             0x01
-#define MOD_LEFT_SHIFT            0x02
-#define MOD_LEFT_ALT              0x04
-#define MOD_LEFT_GUI              0x08
-#define MOD_RIGHT_CTRL            0x10
-#define MOD_RIGHT_SHIFT           0x20
-#define MOD_RIGHT_ALT             0x40
-#define MOD_RIGHT_GUI             0x80
-
-// ─── Data Structures ─────────────────────────────────────────────────────────
-#define MAX_MACRO_LENGTH 32
-
-struct KeyMapping {
-    uint8_t type;                     // MAP_*
-    uint8_t keyCode;                  // HID key code
-    uint8_t modifiers;                // MOD_* flags
-    uint8_t macroLength;
-    char    macro[MAX_MACRO_LENGTH];
-};
-
-struct EncoderConfig {
-    uint8_t mode;           // ENC_MODE_*
-    uint8_t cwKeyCode;
-    uint8_t ccwKeyCode;
-    uint8_t cwModifiers;
-    uint8_t ccwModifiers;
-    uint8_t sensitivity;    // 1-10
-    uint8_t btnKeyCode;
-    uint8_t btnModifiers;
-    uint8_t btnMapType;     // MAP_*
-};
-
-struct DeviceConfig {
-    char          deviceName[32];
-    uint16_t      debounceMs;
-    uint8_t       encoderSensitivity;
-    uint32_t      sleepTimeoutMs;
-    KeyMapping    keyMappings[NUM_KEYS];
-    EncoderConfig encoderConfig;
-};
+// ─── No data structures on ESP ───────────────────────────────────────────────
+// All key mappings, profiles, encoder config live on the PC.
+// The ESP only sends raw hardware events (key press/release, encoder rotate).
 
 #endif // CONFIG_H

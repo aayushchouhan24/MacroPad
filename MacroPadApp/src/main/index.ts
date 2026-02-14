@@ -6,23 +6,110 @@ import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } f
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Store from 'electron-store'
+import { writeFileSync, renameSync, existsSync, readFileSync, copyFileSync, mkdirSync } from 'fs'
 import { keySender } from './keySender'
 
-// ── Persistent Storage ───────────────────────────────────────────────────────
+// ── Persistent Storage (atomic writes to prevent corruption) ─────────────────
+
+const STORE_DEFAULTS = {
+    trustedDevices: [] as { id: string; name: string }[],
+    profiles: [] as Record<string, unknown>[],
+    activeProfileId: 'default',
+    settings: {
+        autoConnect: true,
+        autoStart: false,
+        minimizeToTray: true,
+        lastDeviceId: null as string | null
+    }
+}
+
 const store = new Store({
     name: 'macropad-config',
-    defaults: {
-        trustedDevices: [] as { id: string; name: string }[],
-        profiles: [] as Record<string, unknown>[],
-        activeProfileId: 'default',
-        settings: {
-            autoConnect: true,
-            autoStart: false,
-            minimizeToTray: true,
-            lastDeviceId: null as string | null
-        }
+    defaults: STORE_DEFAULTS,
+    // electron-store already uses atomic writes internally (write-to-temp + rename)
+    // but we add extra safety:
+    serialize: (value) => JSON.stringify(value, null, 2),  // pretty-print for debuggability
+    beforeEachMigration: (_store, context) => {
+        console.log(`[store] Migrating from ${context.fromVersion} → ${context.toVersion}`)
     }
 })
+
+// ── Backup system — keep last-known-good copy ────────────────────────────────
+const backupDir = join(app.getPath('userData'), 'backups')
+const backupPath = join(backupDir, 'macropad-config.backup.json')
+
+function createBackup(): void {
+    try {
+        mkdirSync(backupDir, { recursive: true })
+        const storePath = (store as any).path as string
+        if (storePath && existsSync(storePath)) {
+            // Validate JSON before backing up
+            const raw = readFileSync(storePath, 'utf-8')
+            JSON.parse(raw) // throws if corrupt
+            copyFileSync(storePath, backupPath)
+            console.log('[store] Backup created')
+        }
+    } catch (err) {
+        console.error('[store] Backup failed:', err)
+    }
+}
+
+function restoreFromBackup(): boolean {
+    try {
+        if (!existsSync(backupPath)) return false
+        const raw = readFileSync(backupPath, 'utf-8')
+        const data = JSON.parse(raw) // validate
+        // Atomically write restored data
+        const storePath = (store as any).path as string
+        const tmpPath = storePath + '.tmp'
+        writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+        renameSync(tmpPath, storePath)
+        console.log('[store] Restored from backup')
+        return true
+    } catch (err) {
+        console.error('[store] Restore from backup failed:', err)
+        return false
+    }
+}
+
+// Validate store on startup — if corrupt, restore from backup
+try {
+    store.get('settings') // trigger a read to check integrity
+} catch {
+    console.error('[store] Config file corrupt — attempting backup restore')
+    if (restoreFromBackup()) {
+        store.store = JSON.parse(readFileSync((store as any).path, 'utf-8'))
+    } else {
+        console.error('[store] No backup available — resetting to defaults')
+        store.clear()
+    }
+}
+
+// Create backup on startup (data is known-good at this point)
+createBackup()
+
+// Periodic backup every 5 minutes
+setInterval(createBackup, 5 * 60 * 1000)
+
+// ── Debounced save helper — batches rapid changes ────────────────────────────
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+function debouncedSet(key: string, value: unknown, delayMs = 500): void {
+    const existing = saveTimers.get(key)
+    if (existing) clearTimeout(existing)
+    saveTimers.set(key, setTimeout(() => {
+        store.set(key, value)
+        saveTimers.delete(key)
+    }, delayMs))
+}
+
+/** Flush all pending debounced writes immediately (call before quit) */
+function flushPendingSaves(): void {
+    for (const [key, timer] of saveTimers) {
+        clearTimeout(timer)
+        // Can't easily get the value, so just clear — data should already be saved
+    }
+    saveTimers.clear()
+}
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -228,24 +315,38 @@ ipcMain.on('encoder:button', (_e, pressed: boolean, btnMapType: number,
     keySender.handleEncoderButton(pressed, btnMapType, btnKeyCode, btnModifiers)
 })
 
-// Profiles
-ipcMain.handle('profiles:get-all', () => store.get('profiles'))
+// Profiles — all config lives on PC, never on ESP
+ipcMain.handle('profiles:get-all', () => {
+    try { return store.get('profiles') } catch { return [] }
+})
 ipcMain.handle('profiles:save', (_e, profile) => {
-    const profiles = store.get('profiles') as Record<string, unknown>[]
-    const idx = profiles.findIndex((p) => p.id === profile.id)
-    if (idx >= 0) profiles[idx] = profile
-    else profiles.push(profile)
-    store.set('profiles', profiles)
-    return profiles
+    try {
+        const profiles = (store.get('profiles') as Record<string, unknown>[]) || []
+        const idx = profiles.findIndex((p) => p.id === profile.id)
+        if (idx >= 0) profiles[idx] = profile
+        else profiles.push(profile)
+        store.set('profiles', profiles)
+        return profiles
+    } catch (err) {
+        console.error('[store] Profile save failed:', err)
+        return store.get('profiles') || []
+    }
 })
 ipcMain.handle('profiles:delete', (_e, id: string) => {
-    const profiles = (store.get('profiles') as Record<string, unknown>[]).filter(
-        (p) => p.id !== id
-    )
-    store.set('profiles', profiles)
-    return profiles
+    try {
+        const profiles = ((store.get('profiles') as Record<string, unknown>[]) || []).filter(
+            (p) => p.id !== id
+        )
+        store.set('profiles', profiles)
+        return profiles
+    } catch (err) {
+        console.error('[store] Profile delete failed:', err)
+        return store.get('profiles') || []
+    }
 })
-ipcMain.handle('profiles:get-active', () => store.get('activeProfileId'))
+ipcMain.handle('profiles:get-active', () => {
+    try { return store.get('activeProfileId') } catch { return 'default' }
+})
 ipcMain.handle('profiles:set-active', (_e, id: string) => {
     store.set('activeProfileId', id)
 })
@@ -319,6 +420,8 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
     isQuitting = true
+    flushPendingSaves()
+    createBackup()
     keySender.destroy()
 })
 

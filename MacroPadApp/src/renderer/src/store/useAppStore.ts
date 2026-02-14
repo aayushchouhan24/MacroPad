@@ -164,3 +164,24 @@ export const useAppStore = create<AppState>()((set) => ({
   setDiscoveredDevices: (d) => set({ discoveredDevices: d }),
   setSelectedKeyIndex: (i) => set({ selectedKeyIndex: i })
 }))
+
+// ── Auto-save active profile to PC store on mapping changes ────────────────
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+useAppStore.subscribe((state, prev) => {
+  const mappingsChanged = state.keyMappings !== prev.keyMappings
+  const encoderChanged = state.encoderConfig !== prev.encoderConfig
+
+  if (!mappingsChanged && !encoderChanged) return
+
+  // Debounce to avoid rapid writes
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => {
+    const { profiles, activeProfileId, keyMappings, encoderConfig } = useAppStore.getState()
+    const active = profiles.find((p) => p.id === activeProfileId)
+    if (!active) return
+
+    const updated = { ...active, keyMappings, encoderConfig }
+    window.api?.saveProfile(updated).catch(() => {})
+  }, 500)
+})

@@ -21,12 +21,7 @@ import {
   EVT_ENCODER_BTN_RELEASE,
   DIR_CW,
   HID_KEY_LABELS,
-  CFG_KEY_MAPPING,
-  CFG_ENCODER_CONFIG,
-  CFG_DEVICE_SETTINGS,
-  defaultKeyMapping,
-  DiscoveredDevice,
-  CMD_REQUEST_CONFIG
+  DiscoveredDevice
 } from '@/lib/types'
 
 const pages: Record<string, () => JSX.Element> = {
@@ -96,37 +91,8 @@ export default function App(): JSX.Element {
       }
     })
 
-    conn.onConfigData((cfgType, data) => {
-      const s = useAppStore.getState()
-      if (cfgType === CFG_KEY_MAPPING && data.length >= 5) {
-        const idx = data[0]
-        if (idx < 10) {
-          const km = defaultKeyMapping()
-          km.type = data[1]
-          km.keyCode = data[2]
-          km.modifiers = data[3]
-          const ml = data[4]
-          if (ml > 0 && data.length >= 5 + ml) {
-            km.macro = new TextDecoder().decode(data.slice(5, 5 + ml))
-          }
-          s.setKeyMapping(idx, km)
-        }
-      } else if (cfgType === CFG_ENCODER_CONFIG && data.length >= 9) {
-        s.setEncoderConfig({
-          mode: data[0],
-          cwKeyCode: data[1],
-          ccwKeyCode: data[2],
-          cwModifiers: data[3],
-          ccwModifiers: data[4],
-          sensitivity: data[5],
-          btnKeyCode: data[6],
-          btnModifiers: data[7],
-          btnMapType: data[8]
-        })
-      } else if (cfgType === CFG_DEVICE_SETTINGS && data.length >= 7) {
-        // parsed in settings panel
-      }
-    })
+    // Config data from device is ignored — all config lives on PC.
+    // The ESP never sends config data.
 
     // ── Unified connection change ────────────────────────────────────────
     conn.onConnectionChange(async (connected) => {
@@ -149,11 +115,25 @@ export default function App(): JSX.Element {
         })
         s.addEvent('system', `Device connected (${transport ?? 'unknown'})`)
 
-        // Fetch device info + config from effective transport
+        // Fetch device info only — config comes from PC store
         const info = await conn.readDeviceInfo()
         if (info) s.setDeviceInfo(info)
-        conn.sendCommand(CMD_REQUEST_CONFIG).catch(() => {})
         conn.readBattery().then((b) => s.setBatteryLevel(b)).catch(() => {})
+
+        // Load active profile from PC store
+        try {
+          const profiles = await window.api?.getProfiles()
+          const activeId = await window.api?.getActiveProfileId()
+          if (Array.isArray(profiles) && profiles.length > 0) {
+            s.setProfiles(profiles as any)
+            const active = profiles.find((p: any) => p.id === activeId) || profiles[0]
+            if (active) {
+              s.setActiveProfileId((active as any).id)
+              if ((active as any).keyMappings) s.setAllKeyMappings((active as any).keyMappings)
+              if ((active as any).encoderConfig) s.setEncoderConfig((active as any).encoderConfig)
+            }
+          }
+        } catch { /* profiles not available yet */ }
       }
     })
 

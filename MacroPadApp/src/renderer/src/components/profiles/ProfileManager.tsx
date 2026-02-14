@@ -1,24 +1,23 @@
 // =============================================================================
-// ProfileManager — create / rename / duplicate / import / export / sync
+// ProfileManager — create / rename / duplicate / import / export
+// All config lives on PC.  No device sync needed.
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import * as conn from '@/lib/connection'
 import {
   Plus,
   Copy,
   Trash2,
   Download,
   Upload,
-  Send,
   Pencil,
   Check,
   X,
-  Star
+  Star,
+  Save
 } from 'lucide-react'
 import {
   defaultProfile,
-  CMD_SYNC_PROFILE,
   type Profile,
   type KeyMapping,
   type EncoderConfig
@@ -36,7 +35,6 @@ export function ProfileManager(): JSX.Element {
   const setEncoderCfg   = useAppStore((s) => s.setEncoderConfig)
   const keyMappings     = useAppStore((s) => s.keyMappings)
   const encoderConfig   = useAppStore((s) => s.encoderConfig)
-  const connected       = useAppStore((s) => s.connectionStatus === 'connected')
   const addNotification = useAppStore((s) => s.addNotification)
 
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -98,29 +96,6 @@ export function ProfileManager(): JSX.Element {
     updateProfile(updated)
     window.api?.saveProfile(updated)
     addNotification({ type: 'success', title: `Saved to "${p.name}"`, auto: true })
-  }
-
-  async function handleSyncToDevice(p: Profile): Promise<void> {
-    if (!connected) return
-    const enc = new TextEncoder()
-    const nameBytes = enc.encode(p.name)
-    const data: number[] = [nameBytes.length, ...nameBytes]
-
-    for (const km of p.keyMappings) {
-      data.push(km.type, km.keyCode, km.modifiers)
-      const macroBytes = km.macro ? enc.encode(km.macro) : new Uint8Array()
-      data.push(macroBytes.length, ...macroBytes)
-    }
-
-    const ec = p.encoderConfig
-    data.push(
-      ec.mode, ec.cwKeyCode, ec.ccwKeyCode,
-      ec.cwModifiers, ec.ccwModifiers, ec.sensitivity,
-      ec.btnKeyCode, ec.btnModifiers, ec.btnMapType
-    )
-
-    await conn.sendCommand(CMD_SYNC_PROFILE, data)
-    addNotification({ type: 'success', title: 'Profile synced to device', auto: true })
   }
 
   async function handleExport(p: Profile): Promise<void> {
@@ -223,13 +198,10 @@ export function ProfileManager(): JSX.Element {
                 <IconBtn icon={Pencil} title="Rename" onClick={() => startRename(p)} />
                 <IconBtn icon={Copy} title="Duplicate" onClick={() => handleDuplicate(p)} />
                 <IconBtn icon={Download} title="Export" onClick={() => handleExport(p)} />
-                {connected && (
-                  <IconBtn icon={Send} title="Sync to device" onClick={() => handleSyncToDevice(p)} />
-                )}
                 {isActive && (
                   <IconBtn
-                    icon={Check}
-                    title="Save current config"
+                    icon={Save}
+                    title="Save current config to this profile"
                     onClick={() => handleSaveCurrentToProfile(p)}
                     className="text-emerald-400"
                   />

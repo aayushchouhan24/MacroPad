@@ -1,12 +1,12 @@
 // =============================================================================
 // KeyMapper — visual grid + per-key configuration panel + encoder rotation
+// All config saved on PC only. ESP stores nothing.
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/store/useAppStore'
 import { KeyConfigPanel } from './KeyConfigPanel'
 import { EncoderKnob } from '@/components/dashboard/EncoderKnob'
-import * as conn from '@/lib/connection'
 import {
   HID_KEY_LABELS,
   MAP_NONE,
@@ -19,11 +19,10 @@ import {
   ENC_MODE_ZOOM,
   ENC_MODE_BRIGHTNESS,
   ENC_MODE_CUSTOM,
-  CMD_SET_ENCODER_MODE,
   type EncoderConfig
 } from '@/lib/types'
 import { NUM_ROWS, NUM_COLS } from '@/lib/constants'
-import { Send, RotateCcw } from 'lucide-react'
+import { Save, RotateCcw } from 'lucide-react'
 
 const ENC_MODES = [
   ENC_MODE_VOLUME,
@@ -44,7 +43,6 @@ export function KeyMapper(): JSX.Element {
   const setSelected    = useAppStore((s) => s.setSelectedKeyIndex)
   const encoderConfig  = useAppStore((s) => s.encoderConfig)
   const setEncoderConfig = useAppStore((s) => s.setEncoderConfig)
-  const connected      = useAppStore((s) => s.connectionStatus === 'connected')
 
   const [localEncoder, setLocalEncoder] = useState<EncoderConfig>({ ...encoderConfig })
 
@@ -56,21 +54,9 @@ export function KeyMapper(): JSX.Element {
     setLocalEncoder((prev) => ({ ...prev, ...patch }))
   }
 
-  async function handleEncoderApply(): Promise<void> {
+  function handleEncoderApply(): void {
     setEncoderConfig(localEncoder)
-    if (connected) {
-      await conn.sendCommand(CMD_SET_ENCODER_MODE, [
-        localEncoder.mode,
-        localEncoder.cwKeyCode,
-        localEncoder.ccwKeyCode,
-        localEncoder.cwModifiers,
-        localEncoder.ccwModifiers,
-        localEncoder.sensitivity,
-        localEncoder.btnKeyCode,
-        localEncoder.btnModifiers,
-        localEncoder.btnMapType
-      ])
-    }
+    // Encoder config saved to PC store only — ESP doesn't store anything
   }
 
   function handleEncoderReset(): void {
@@ -175,7 +161,7 @@ export function KeyMapper(): JSX.Element {
               <RotateCcw size={13} /> Reset
             </button>
             <button onClick={handleEncoderApply} className="btn-primary flex items-center gap-1.5 !py-1.5 !px-3">
-              <Send size={13} /> Apply
+              <Save size={13} /> Save
             </button>
           </div>
         </div>

@@ -1,9 +1,8 @@
 // =============================================================================
-// KeyConfigPanel — per-key mapping editor
+// KeyConfigPanel — per-key mapping editor (saved on PC only)
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import * as conn from '@/lib/connection'
 import {
   MAP_NONE,
   MAP_SINGLE_KEY,
@@ -13,10 +12,9 @@ import {
   MAP_LAUNCH_APP,
   MAP_TYPE_LABELS,
   HID_KEY_LABELS,
-  CMD_SET_KEY_MAP,
   type KeyMapping
 } from '@/lib/types'
-import { Send, RotateCcw, FolderOpen } from 'lucide-react'
+import { Save, RotateCcw, FolderOpen } from 'lucide-react'
 import { MacroEditor, parseMacroActions, stringifyMacroActions } from './MacroEditor'
 
 const MAP_TYPES = [
@@ -52,7 +50,6 @@ interface Props {
 export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
   const mapping    = useAppStore((s) => s.keyMappings[keyIndex])
   const setMapping = useAppStore((s) => s.setKeyMapping)
-  const connected  = useAppStore((s) => s.connectionStatus === 'connected')
 
   const [local, setLocal] = useState<KeyMapping>({ ...mapping })
 
@@ -65,20 +62,9 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
     []
   )
 
-  async function handleApply(): Promise<void> {
+  function handleApply(): void {
     setMapping(keyIndex, local)
-    if (connected) {
-      const enc = new TextEncoder()
-      const macroBytes = local.macro ? enc.encode(local.macro) : new Uint8Array()
-      await conn.sendCommand(CMD_SET_KEY_MAP, [
-        keyIndex,
-        local.type,
-        local.keyCode,
-        local.modifiers,
-        macroBytes.length,
-        ...macroBytes
-      ])
-    }
+    // Config saved to PC store only — ESP doesn't store anything
   }
 
   function handleReset(): void {
@@ -98,7 +84,7 @@ export function KeyConfigPanel({ keyIndex }: Props): JSX.Element {
             <RotateCcw size={13} /> Reset
           </button>
           <button onClick={handleApply} className="btn-primary flex items-center gap-1.5 !py-1.5 !px-3">
-            <Send size={13} /> Apply
+            <Save size={13} /> Save
           </button>
         </div>
       </div>

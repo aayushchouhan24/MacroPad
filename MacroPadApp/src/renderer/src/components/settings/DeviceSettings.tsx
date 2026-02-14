@@ -1,30 +1,22 @@
 // =============================================================================
-// DeviceSettings — BT name, debounce, sleep, factory reset, app settings
+// DeviceSettings - debounce (live only), app settings, device info
+// The ESP stores NOTHING.  All config lives on the PC.
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import * as conn from '@/lib/connection'
-import {
-  CMD_SET_BT_NAME,
-  CMD_SET_DEBOUNCE,
-  CMD_SET_SLEEP_TIMEOUT,
-  CMD_FACTORY_RESET,
-  CMD_SAVE_CONFIG
-} from '@/lib/types'
+import { CMD_SET_DEBOUNCE } from '@/lib/types'
 import {
   Bluetooth,
   Timer,
-  Moon,
-  RotateCcw,
-  Save,
-  AlertTriangle,
   Shield,
   Trash2,
   Send,
   Settings2,
   Power,
   MonitorOff,
-  Wifi
+  Wifi,
+  Info
 } from 'lucide-react'
 
 export function DeviceSettings(): JSX.Element {
@@ -33,10 +25,7 @@ export function DeviceSettings(): JSX.Element {
   const deviceName    = useAppStore((s) => s.deviceName)
   const addNotify     = useAppStore((s) => s.addNotification)
 
-  const [btName, setBtName]       = useState(deviceName ?? 'MacroPad')
-  const [debounce, setDebounce]   = useState(20)
-  const [sleepMin, setSleepMin]   = useState(5)
-  const [resetConfirm, setResetConfirm] = useState(false)
+  const [debounce, setDebounce] = useState(20)
 
   const [trustedDevices, setTrustedDevices] = useState<{ id: string; name: string }[]>([])
 
@@ -46,7 +35,6 @@ export function DeviceSettings(): JSX.Element {
   const [minimizeToTray, setMinimizeToTray] = useState(true)
 
   useEffect(() => {
-    if (deviceName) setBtName(deviceName)
     window.api?.getTrustedDevices().then(setTrustedDevices)
     window.api?.getSettings().then((s) => {
       if (s) {
@@ -57,40 +45,10 @@ export function DeviceSettings(): JSX.Element {
     })
   }, [deviceName])
 
-  async function handleSetName(): Promise<void> {
-    if (!connected) return
-    const enc = new TextEncoder()
-    const bytes = enc.encode(btName)
-    await conn.sendCommand(CMD_SET_BT_NAME, [...bytes])
-    addNotify({ type: 'info', title: 'Name updated (takes effect after restart)', auto: true })
-  }
-
   async function handleSetDebounce(): Promise<void> {
     if (!connected) return
     await conn.sendCommand(CMD_SET_DEBOUNCE, [(debounce >> 8) & 0xff, debounce & 0xff])
-    addNotify({ type: 'success', title: `Debounce set to ${debounce}ms`, auto: true })
-  }
-
-  async function handleSetSleep(): Promise<void> {
-    if (!connected) return
-    const ms = sleepMin * 60 * 1000
-    await conn.sendCommand(CMD_SET_SLEEP_TIMEOUT, [
-      (ms >> 24) & 0xff, (ms >> 16) & 0xff, (ms >> 8) & 0xff, ms & 0xff
-    ])
-    addNotify({ type: 'success', title: `Sleep timeout set to ${sleepMin} min`, auto: true })
-  }
-
-  async function handleSaveToFlash(): Promise<void> {
-    if (!connected) return
-    await conn.sendCommand(CMD_SAVE_CONFIG)
-    addNotify({ type: 'success', title: 'Config saved to device flash', auto: true })
-  }
-
-  async function handleFactoryReset(): Promise<void> {
-    if (!connected) return
-    await conn.sendCommand(CMD_FACTORY_RESET)
-    setResetConfirm(false)
-    addNotify({ type: 'warning', title: 'Factory reset — device is restarting', auto: true })
+    addNotify({ type: 'success', title: `Debounce set to ${debounce}ms (live, resets on reboot)`, auto: true })
   }
 
   async function removeTrusted(id: string): Promise<void> {
@@ -101,28 +59,18 @@ export function DeviceSettings(): JSX.Element {
   return (
     <div className="animate-fade-in max-w-2xl space-y-6">
 
-      {/* ── Bluetooth Name ──────────────────────────────────────────────── */}
-      <Section title="Bluetooth Name" icon={Bluetooth}>
-        <div className="flex gap-3">
-          <input
-            value={btName}
-            onChange={(e) => setBtName(e.target.value)}
-            maxLength={30}
-            className="input-field flex-1"
-          />
-          <button
-            onClick={handleSetName}
-            disabled={!connected}
-            className="btn-primary flex items-center gap-1.5 disabled:opacity-40"
-          >
-            <Send size={13} /> Set
-          </button>
-        </div>
-        <p className="text-[11px] text-slate-600 mt-1">Device must restart for name change to take effect.</p>
+      {/* -- Note about storage architecture -- */}
+      <Section title="Storage Info" icon={Info}>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          All configuration (key mappings, profiles, encoder settings) is stored
+          <strong className="text-slate-300"> only on this PC</strong>.
+          The MacroPad device stores nothing - it only sends raw button and
+          encoder events.  Your profiles are auto-saved and backed up locally.
+        </p>
       </Section>
 
-      {/* ── Debounce ────────────────────────────────────────────────────── */}
-      <Section title="Key Debounce" icon={Timer}>
+      {/* -- Debounce (live, not persisted on device) -- */}
+      <Section title="Key Debounce (Live)" icon={Timer}>
         <label className="label">Debounce: {debounce} ms</label>
         <input
           type="range"
@@ -143,79 +91,25 @@ export function DeviceSettings(): JSX.Element {
         >
           Apply
         </button>
+        <p className="text-[11px] text-slate-600 mt-1">
+          This is a temporary adjustment - resets to default on device reboot.
+        </p>
       </Section>
 
-      {/* ── Sleep Timeout ───────────────────────────────────────────────── */}
-      <Section title="Sleep Timeout" icon={Moon}>
-        <label className="label">Idle timeout: {sleepMin} min</label>
-        <input
-          type="range"
-          min={1}
-          max={30}
-          value={sleepMin}
-          onChange={(e) => setSleepMin(Number(e.target.value))}
-          className="w-full accent-brand-500"
-        />
-        <div className="flex justify-between text-[10px] text-slate-600">
-          <span>1 min</span>
-          <span>30 min</span>
-        </div>
-        <button
-          onClick={handleSetSleep}
-          disabled={!connected}
-          className="btn-primary mt-2 disabled:opacity-40"
-        >
-          Apply
-        </button>
-      </Section>
-
-      {/* ── Save / Reset ────────────────────────────────────────────────── */}
-      <Section title="Device Actions" icon={Save}>
-        <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={handleSaveToFlash}
-            disabled={!connected}
-            className="btn-primary flex items-center gap-1.5 disabled:opacity-40"
-          >
-            <Save size={14} /> Save Config to Flash
-          </button>
-
-          {!resetConfirm ? (
-            <button
-              onClick={() => setResetConfirm(true)}
-              disabled={!connected}
-              className="btn-danger flex items-center gap-1.5 disabled:opacity-40"
-            >
-              <RotateCcw size={14} /> Factory Reset
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600/20 border border-red-500/40">
-              <AlertTriangle size={16} className="text-red-400" />
-              <span className="text-xs text-red-300">Are you sure? This erases all settings.</span>
-              <button onClick={handleFactoryReset} className="btn-danger !py-1 !px-3 text-xs">
-                Yes, Reset
-              </button>
-              <button onClick={() => setResetConfirm(false)} className="btn-secondary !py-1 !px-3 text-xs">
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
-      </Section>
-
-      {/* ── Device Info ─────────────────────────────────────────────────── */}
+      {/* -- Device Info -- */}
       {deviceInfo && (
         <Section title="Device Info" icon={Bluetooth}>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <InfoRow label="Firmware" value={`v${deviceInfo.fwMajor}.${deviceInfo.fwMinor}.${deviceInfo.fwPatch}`} />
-            <InfoRow label="Layout" value={`${deviceInfo.rows}×${deviceInfo.cols}`} />
+            <InfoRow label="Layout" value={`${deviceInfo.rows}x${deviceInfo.cols}`} />
             <InfoRow label="Encoder" value={deviceInfo.hasEncoder ? 'Yes' : 'No'} />
             <InfoRow label="Battery Monitor" value={deviceInfo.hasBattery ? 'Yes' : 'No'} />
+            {deviceName && <InfoRow label="Device Name" value={deviceName} />}
           </div>
         </Section>
       )}
 
-      {/* ── App Settings ──────────────────────────────────────────────── */}
+      {/* -- App Settings -- */}
       <Section title="App Settings" icon={Settings2}>
         <div className="space-y-3">
           <ToggleRow
@@ -257,7 +151,7 @@ export function DeviceSettings(): JSX.Element {
         </div>
       </Section>
 
-      {/* ── Trusted Devices ─────────────────────────────────────────────── */}
+      {/* -- Trusted Devices -- */}
       <Section title="Trusted Devices" icon={Shield}>
         {trustedDevices.length === 0 ? (
           <p className="text-xs text-slate-600">No trusted devices saved.</p>
@@ -284,7 +178,7 @@ export function DeviceSettings(): JSX.Element {
   )
 }
 
-// ── Reusable section wrapper ─────────────────────────────────────────────────
+// -- Reusable section wrapper --
 function Section({
   title,
   icon: Icon,

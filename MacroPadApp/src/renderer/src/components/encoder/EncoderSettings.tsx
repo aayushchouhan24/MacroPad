@@ -1,10 +1,9 @@
 // =============================================================================
-// EncoderSettings — mode picker, sensitivity, button mapping
+// EncoderSettings — mode picker, sensitivity, button mapping (PC-only storage)
 // =============================================================================
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { EncoderKnob } from '@/components/dashboard/EncoderKnob'
-import * as conn from '@/lib/connection'
 import {
   ENC_MODE_LABELS,
   ENC_MODE_VOLUME,
@@ -17,10 +16,9 @@ import {
   MAP_SINGLE_KEY,
   MAP_MEDIA_KEY,
   HID_KEY_LABELS,
-  CMD_SET_ENCODER_MODE,
   type EncoderConfig
 } from '@/lib/types'
-import { Send, RotateCcw } from 'lucide-react'
+import { Save, RotateCcw } from 'lucide-react'
 
 const ENC_MODES = [
   ENC_MODE_VOLUME,
@@ -37,7 +35,6 @@ const COMMON_KEYS = Object.entries(HID_KEY_LABELS)
 export function EncoderSettings(): JSX.Element {
   const config     = useAppStore((s) => s.encoderConfig)
   const setConfig  = useAppStore((s) => s.setEncoderConfig)
-  const connected  = useAppStore((s) => s.connectionStatus === 'connected')
 
   const [local, setLocal] = useState<EncoderConfig>({ ...config })
 
@@ -49,21 +46,9 @@ export function EncoderSettings(): JSX.Element {
     setLocal((prev) => ({ ...prev, ...patch }))
   }
 
-  async function handleApply(): Promise<void> {
+  function handleApply(): void {
     setConfig(local)
-    if (connected) {
-      await conn.sendCommand(CMD_SET_ENCODER_MODE, [
-        local.mode,
-        local.cwKeyCode,
-        local.ccwKeyCode,
-        local.cwModifiers,
-        local.ccwModifiers,
-        local.sensitivity,
-        local.btnKeyCode,
-        local.btnModifiers,
-        local.btnMapType
-      ])
-    }
+    // Config saved to PC store only — ESP doesn't store anything
   }
 
   function handleReset(): void {
@@ -89,7 +74,7 @@ export function EncoderSettings(): JSX.Element {
               <RotateCcw size={13} /> Reset
             </button>
             <button onClick={handleApply} className="btn-primary flex items-center gap-1.5 !py-1.5 !px-3">
-              <Send size={13} /> Apply
+              <Save size={13} /> Save
             </button>
           </div>
         </div>
